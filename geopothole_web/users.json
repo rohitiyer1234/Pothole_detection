@@ -1,0 +1,14 @@
+[
+    {
+        "id": "09f540d6-f83e-4488-ba30-d7fc2c97cea6",
+        "username": "admin",
+        "password": "pbkdf2:sha256:600000$1LOkSqBeUDWL5Hoe$11c0a7b763d4a35281da095d0d8454131309f270b3e8005a0604a9b281fedb7b",
+        "role": "admin"
+    },
+    {
+        "id": "ad0e5206-d69b-455a-95ed-d8c16909edad",
+        "username": "rohit",
+        "password": "pbkdf2:sha256:600000$GKhsgk2OW9dTkDdm$6c55e421498185b6a32f2fbc04708440ee1f922ba07e9649ce7f0c15532d6166",
+        "role": "user"
+    }
+]

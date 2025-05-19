@@ -1,0 +1,159 @@
+
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">Pothole Detection Dashboard</h4>
+                <a href="{{ url_for('map_view') }}" class="btn btn-primary">View Map</a>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card text-center mb-3">
+                            <div class="card-body">
+                                <h5 class="card-title">Total Potholes</h5>
+                                <h2 id="total-count">...</h2>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card text-center mb-3">
+                            <div class="card-body">
+                                <h5 class="card-title">Today's Detections</h5>
+                                <h2 id="today-count">...</h2>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card text-center mb-3">
+                            <div class="card-body">
+                                <h5 class="card-title">High Confidence</h5>
+                                <h2 id="high-confidence-count">...</h2>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">Recent Pothole Detections</h4>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped" id="potholes-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Location</th>
+                                <th>Confidence</th>
+                                <th>Reported By</th>
+                                <th>Timestamp</th>
+                                {% if current_user.role == "admin" %}
+                                <th>Actions</th>
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="{% if current_user.role == 'admin' %}6{% else %}5{% endif %}" class="text-center">Loading data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Fetch pothole data and update dashboard
+    async function loadDashboardData() {
+        try {
+            const response = await fetch('/api/markers');
+            const data = await response.json();
+            
+            // Update counts
+            document.getElementById('total-count').textContent = data.length;
+            
+            // Count today's detections
+            const today = new Date().toISOString().split('T')[0];
+            const todayCount = data.filter(marker => 
+                marker.timestamp.startsWith(today)
+            ).length;
+            document.getElementById('today-count').textContent = todayCount;
+            
+            // Count high confidence detections (confidence > 80%)
+            const highConfidenceCount = data.filter(marker => {
+                const confidence = parseFloat(marker.confidence);
+                return !isNaN(confidence) && confidence > 80;
+            }).length;
+            document.getElementById('high-confidence-count').textContent = highConfidenceCount;
+            
+            // Update table with most recent entries first
+            const sortedData = [...data].sort((a, b) => 
+                new Date(b.timestamp) - new Date(a.timestamp)
+            );
+            
+            const tbody = document.querySelector('#potholes-table tbody');
+            tbody.innerHTML = '';
+            
+            if (sortedData.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td colspan="{% if current_user.role == 'admin' %}6{% else %}5{% endif %}" class="text-center">No pothole data available</td>`;
+                tbody.appendChild(row);
+                return;
+            }
+            
+            // Show the 10 most recent entries
+            sortedData.slice(0, 10).forEach(marker => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${marker.id.substring(0, 8)}...</td>
+                    <td>${marker.lat.toFixed(6)}, ${marker.lng.toFixed(6)}</td>
+                    <td>${marker.confidence}</td>
+                    <td>${marker.reported_by}</td>
+                    <td>${marker.timestamp}</td>
+                    {% if current_user.role == "admin" %}
+                    <td>
+                        <button class="btn btn-sm btn-danger delete-btn" data-id="${marker.id}">Delete</button>
+                    </td>
+                    {% endif %}
+                `;
+                tbody.appendChild(row);
+            });
+            
+            // Add event listeners to delete buttons
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', async function() {
+                    const id = this.getAttribute('data-id');
+                    if (confirm('Are you sure you want to delete this marker?')) {
+                        try {
+                            const response = await fetch(`/api/markers/${id}`, {
+                                method: 'DELETE'
+                            });
+                            if (response.ok) {
+                                // Reload data after deletion
+                                loadDashboardData();
+                            } else {
+                                alert('Failed to delete marker');
+                            }
+                        } catch (error) {
+                            console.error('Error deleting marker:', error);
+                            alert('Error deleting marker');
+                        }
+                    }
+                });
+            });
+            
+        } catch (error) {
+            console.error('Error loading dashboard data:', error);
+        }
+    }
+    
+    // Load data when page loads
+    document.addEventListener('DOMContentLoaded', loadDashboardData);
+</script>

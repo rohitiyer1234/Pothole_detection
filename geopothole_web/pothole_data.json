@@ -1,0 +1,35 @@
+[
+    {
+      "id": "b89b1b90-cc49-49a4-9f30-65a14673c223",
+      "lat": 12.9716,
+      "lng": 77.5946,
+      "confidence": 0.9,
+      "reported_by": "admin",
+      "timestamp": "2025-04-18 12:00:00"
+    },
+    {
+      "id": "7f12f20a-3e32-4e80-b2d9-d1b0a6e8c997",
+      "lat": 13.0358,
+      "lng": 77.5970,
+      "confidence": 0.92,
+      "reported_by": "user123",
+      "timestamp": "2025-04-18 12:05:00"
+    },
+    {
+      "id": "113f924f-4e9a-4e9f-8c1f-82a4b70c621e",
+      "lat": 12.9081,
+      "lng": 77.6476,
+      "confidence": 0.9,
+      "reported_by": "reporter01",
+      "timestamp": "2025-04-18 12:10:00"
+    },
+    {
+      "id": "c34e92d0-7d92-4053-b98f-bc207e690db3",
+      "lat": 12.9718,
+      "lng": 77.6412,
+      "confidence": 0.9,
+      "reported_by": "admin",
+      "timestamp": "2025-04-18 12:15:00"
+    }
+  ]
+  

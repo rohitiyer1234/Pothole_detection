@@ -1,0 +1,369 @@
+
+<style>
+    #map-container {
+        height: calc(100vh - 150px);
+        min-height: 500px;
+    }
+    
+    #map {
+        height: 100%;
+        width: 100%;
+        border-radius: 8px;
+    }
+    
+    .controls-panel {
+        background-color: rgba(255, 255, 255, 0.9);
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+        margin-bottom: 15px;
+    }
+    
+    .info-window {
+        max-width: 250px;
+    }
+    
+    .delete-marker-btn {
+        background-color: #dc3545;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    
+    .delete-marker-btn:hover {
+        background-color: #bd2130;
+    }
+    
+    .marker-details {
+        margin-bottom: 10px;
+    }
+    
+    .marker-details p {
+        margin: 5px 0;
+    }
+</style>
+<div class="row">
+    <div class="col-md-3">
+        <div class="controls-panel mb-3">
+            <h4>Map Controls</h4>
+            <div class="mb-3">
+                <label for="filter-date" class="form-label">Filter by Date:</label>
+                <input type="date" class="form-control" id="filter-date">
+            </div>
+            <div class="mb-3">
+                <label for="filter-confidence" class="form-label">Min Confidence:</label>
+                <input type="range" class="form-range" id="filter-confidence" min="0" max="100" value="0">
+                <span id="confidence-value">0%</span>
+            </div>
+            <button id="apply-filters" class="btn btn-primary w-100">Apply Filters</button>
+            <button id="reset-filters" class="btn btn-secondary w-100 mt-2">Reset Filters</button>
+        </div>
+        
+        {% if current_user.role == "admin" %}
+        <div class="controls-panel">
+            <h4>Admin Controls</h4>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="enable-add-mode">
+                <label class="form-check-label" for="enable-add-mode">Add Marker Mode</label>
+            </div>
+            <div id="add-marker-form" style="display: none;">
+                <div class="mb-3">
+                    <label for="new-confidence" class="form-label">Confidence:</label>
+                    <input type="number" class="form-control" id="new-confidence" min="0" max="100" value="90">
+                </div>
+                <div class="text-center">
+                    <p class="small text-muted">Click on the map to add a marker</p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    <div class="col-md-9">
+        <div id="map-container">
+            <div id="map"></div>
+        </div>
+    </div>
+</div>
+
+
+
+<script src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&callback=initMap" async defer></script>
+<script>
+    let map;
+    let markers = [];
+    let allMarkers = [];
+    let isAddMode = false;
+    
+    function initMap() {
+        // Create the map centered at a default location (you can adjust this)
+        map = new google.maps.Map(document.getElementById("map"), {
+            center: { lat: 12.9716, lng: 77.5946 }, // Default to Bangalore, India
+            zoom: 13,
+            mapTypeControl: true,
+            fullscreenControl: true,
+            streetViewControl: false,
+            mapTypeId: google.maps.MapTypeId.ROADMAP
+        });
+        
+        // Load markers
+        loadMarkers();
+        
+        {% if current_user.role == "admin" %}
+        // Set up click listener for adding new markers (admin only)
+        map.addListener('click', function(event) {
+            if (isAddMode) {
+                addNewMarker(event.latLng);
+            }
+        });
+        
+        // Toggle add marker mode
+        document.getElementById('enable-add-mode').addEventListener('change', function() {
+            isAddMode = this.checked;
+            document.getElementById('add-marker-form').style.display = isAddMode ? 'block' : 'none';
+            
+            // Change cursor to indicate add mode
+            map.setOptions({
+                draggableCursor: isAddMode ? 'crosshair' : null
+            });
+        });
+        {% endif %}
+        
+        // Set up filter controls
+        document.getElementById('filter-confidence').addEventListener('input', function() {
+            document.getElementById('confidence-value').textContent = this.value + '%';
+        });
+        
+        document.getElementById('apply-filters').addEventListener('click', applyFilters);
+        document.getElementById('reset-filters').addEventListener('click', resetFilters);
+    }
+    
+    async function loadMarkers() {
+        try {
+            const response = await fetch('/api/markers');
+            if (!response.ok) {
+                throw new Error(`Failed to load markers: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            
+            // Save all markers for filtering
+            allMarkers = data;
+            
+            // Clear existing markers
+            clearMarkers();
+            
+            // Add markers to the map
+            data.forEach(addMarkerToMap);
+            
+            // If there are markers, fit the map to show all of them
+            if (markers.length > 0) {
+                const bounds = new google.maps.LatLngBounds();
+                markers.forEach(marker => bounds.extend(marker.getPosition()));
+                map.fitBounds(bounds);
+                
+                // Don't zoom in too close if there's only one marker or they're very close
+                if (map.getZoom() > 15) map.setZoom(15);
+            }
+        } catch (error) {
+            console.error('Error loading markers:', error);
+            alert('Error loading pothole markers. Please try refreshing the page.');
+        }
+    }
+    
+    function addMarkerToMap(markerData) {
+        // Validate marker data
+        if (!markerData || typeof markerData.lat !== 'number' || typeof markerData.lng !== 'number') {
+            console.error('Invalid marker data:', markerData);
+            return null;
+        }
+        
+        const position = { lat: markerData.lat, lng: markerData.lng };
+        
+        // Create custom marker icon based on confidence
+        const confidence = parseFloat(markerData.confidence);
+        let iconColor = '#FFFF00'; // Default yellow
+        
+        if (!isNaN(confidence)) {
+            if (confidence >= 90) {
+                iconColor = '#FF0000'; // Red for high confidence
+            } else if (confidence >= 70) {
+                iconColor = '#FFA500'; // Orange for medium confidence
+            }
+        }
+        
+        // Create the marker
+        const marker = new google.maps.Marker({
+            position: position,
+            map: map,
+            title: `Pothole: ${markerData.confidence}% confidence`,
+            icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 8,
+                fillColor: iconColor,
+                fillOpacity: 0.8,
+                strokeWeight: 2,
+                strokeColor: "#FFFFFF"
+            }
+        });
+        
+        // Create an info window with details
+        const infoContent = `
+            <div class="info-window">
+                <h5>Pothole Details</h5>
+                <div class="marker-details">
+                    <p><strong>ID:</strong> ${markerData.id ? markerData.id.substring(0, 8) + '...' : 'N/A'}</p>
+                    <p><strong>Location:</strong> ${markerData.lat.toFixed(6)}, ${markerData.lng.toFixed(6)}</p>
+                    <p><strong>Confidence:</strong> ${markerData.confidence}%</p>
+                    <p><strong>Reported by:</strong> ${markerData.reported_by || 'Unknown'}</p>
+                    <p><strong>Time:</strong> ${markerData.timestamp || 'Unknown'}</p>
+                </div>
+                {% if current_user.role == "admin" %}
+                <button class="delete-marker-btn" data-id="${markerData.id}">Delete</button>
+                {% endif %}
+            </div>
+        `;
+        
+        const infoWindow = new google.maps.InfoWindow({
+            content: infoContent
+        });
+        
+        // Add click listener to show info window
+        marker.addListener('click', function() {
+            // Close any open info windows first
+            markers.forEach(m => {
+                if (m.infoWindow && m.infoWindow.getMap()) {
+                    m.infoWindow.close();
+                }
+            });
+            
+            infoWindow.open(map, marker);
+        });
+        
+        // Store reference to the info window with the marker
+        marker.infoWindow = infoWindow;
+        
+        // Add event listener for delete button if present
+        infoWindow.addListener('domready', function() {
+            const deleteBtn = document.querySelector('.delete-marker-btn[data-id="' + markerData.id + '"]');
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', async function() {
+                    const id = this.getAttribute('data-id');
+                    if (confirm('Are you sure you want to delete this marker?')) {
+                        try {
+                            const response = await fetch(`/api/markers/${id}`, {
+                                method: 'DELETE'
+                            });
+                            
+                            if (response.ok) {
+                                // Close the info window and reload markers
+                                infoWindow.close();
+                                loadMarkers();
+                            } else {
+                                const errorData = await response.json();
+                                alert(`Failed to delete marker: ${errorData.message || response.statusText}`);
+                            }
+                        } catch (error) {
+                            console.error('Error deleting marker:', error);
+                            alert('Error deleting marker. Please try again.');
+                        }
+                    }
+                });
+            }
+        });
+        
+        // Store the marker reference
+        markers.push(marker);
+        
+        return marker;
+    }
+    
+    function clearMarkers() {
+        markers.forEach(marker => marker.setMap(null));
+        markers = [];
+    }
+    
+    function applyFilters() {
+        const dateFilter = document.getElementById('filter-date').value;
+        const confidenceFilter = parseInt(document.getElementById('filter-confidence').value);
+        
+        // Clear existing markers
+        clearMarkers();
+        
+        // Apply filters
+        const filteredMarkers = allMarkers.filter(marker => {
+            // Filter by confidence
+            const confidence = parseFloat(marker.confidence);
+            if (!isNaN(confidence) && confidence < confidenceFilter) {
+                return false;
+            }
+            
+            // Filter by date if a date is selected
+            if (dateFilter && marker.timestamp) {
+                const markerDate = marker.timestamp.split(' ')[0]; // Extract date part (YYYY-MM-DD)
+                if (markerDate !== dateFilter) {
+                    return false;
+                }
+            }
+            
+            return true;
+        });
+        
+        // Add filtered markers to map
+        filteredMarkers.forEach(addMarkerToMap);
+        
+        // Update count
+        const countMessage = `Showing ${filteredMarkers.length} of ${allMarkers.length} potholes`;
+        alert(countMessage);
+    }
+    
+    function resetFilters() {
+        document.getElementById('filter-date').value = '';
+        document.getElementById('filter-confidence').value = 0;
+        document.getElementById('confidence-value').textContent = '0%';
+        
+        // Reload all markers
+        clearMarkers();
+        allMarkers.forEach(addMarkerToMap);
+    }
+    
+    {% if current_user.role == "admin" %}
+    async function addNewMarker(location) {
+        const confidence = document.getElementById('new-confidence').value;
+        
+        try {
+            const response = await fetch('/api/markers', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    lat: location.lat(),
+                    lng: location.lng(),
+                    confidence: confidence
+                })
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                console.log('Marker added successfully:', result);
+                
+                // Reload markers to show the new one
+                loadMarkers();
+            } else {
+                const errorData = await response.json();
+                alert(`Failed to add marker: ${errorData.message || response.statusText}`);
+            }
+        } catch (error) {
+            console.error('Error adding marker:', error);
+            alert('Error adding marker. Please try again.');
+        }
+    }
+    {% endif %}
+    
+    // Load markers when the map is ready
+    document.addEventListener('DOMContentLoaded', function() {
+        // Map will be initialized by the Google Maps API callback
+    });
+</script>
